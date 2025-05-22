@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Supabase Blog</title>
+  <link rel="stylesheet" href="zpravy.css">
+</head>
+<body>
+  <h1>Blog</h1>
+  <input type="text" id="title" placeholder="Nadpis"><br>
+  <textarea id="content" placeholder="Obsah příspěvku"></textarea><br>
+  <input type="file" id="image"><br>
+  <button onclick="addPost()">Přidat příspěvek</button>
+  <hr>
+  <div id="posts"></div>
+
+  <script type="module">
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+  const supabaseUrl = "https://znzmymfrzmdzgxdgvkty.supabase.co";
+  const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpuem15bWZyem1kemd4ZGd2a3R5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4NTg2OTAsImV4cCI6MjA2MzQzNDY5MH0.srpRNME5Udm05IxzsAMx780EUfXG9Tdj56XRYxcqUSc"; // Nahraď svým veřejným klíčem
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  async function loadPosts() {
+    const { data, error } = await supabase
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    const container = document.getElementById("posts");
+    container.innerHTML = "";
+
+    data.forEach(post => {
+      const div = document.createElement("div");
+      div.className = "post";
+      div.innerHTML = `
+        <h3 contenteditable="false" id="title-${post.id}">${post.title}</h3>
+        <p contenteditable="false" id="content-${post.id}">${post.content}</p>
+        ${post.image_url ? `<img src="${post.image_url}" alt="obrázek">` : ""}
+        <small>${new Date(post.created_at).toLocaleString()}</small><br>
+        <button onclick="deletePost('${post.id}')">Smazat</button>
+        <button onclick="editPost('${post.id}')">Upravit</button>
+        <button onclick="saveEdit('${post.id}')" style="display:none;" id="save-${post.id}">Uložit</button>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  async function deletePost(id) {
+  const confirmed = confirm("Opravdu chceš smazat tento příspěvek?");
+  if (!confirmed) return;
+
+  const { error } = await supabase
+    .from("posts")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    alert("Chyba při mazání příspěvku.");
+  } else {
+    loadPosts();
+  }
+}
+
+
+  function editPost(id) {
+    document.getElementById(`title-${id}`).contentEditable = true;
+    document.getElementById(`content-${id}`).contentEditable = true;
+    document.getElementById(`save-${id}`).style.display = "inline-block";
+  }
+
+  async function saveEdit(id) {
+    const title = document.getElementById(`title-${id}`).innerText;
+    const content = document.getElementById(`content-${id}`).innerText;
+
+    await supabase.from("posts").update({ title, content }).eq("id", id);
+
+    document.getElementById(`title-${id}`).contentEditable = false;
+    document.getElementById(`content-${id}`).contentEditable = false;
+    document.getElementById(`save-${id}`).style.display = "none";
+
+    loadPosts();
+  }
+
+  async function addPost() {
+  const title = document.getElementById("title").value;
+  const content = document.getElementById("content").value;
+  const file = document.getElementById("image").files[0];
+  let image_url = "";
+
+  if (!title || !content) {
+    alert("Vyplň název i obsah.");
+    return;
+  }
+
+  // Nahrání obrázku (pokud existuje)
+  if (file) {
+    const filePath = `blog/${Date.now()}_${file.name}`;
+    const { data, error: uploadError } = await supabase.storage
+      .from("images")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      alert("Nepodařilo se nahrát obrázek.");
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("images")
+      .getPublicUrl(filePath);
+
+    image_url = urlData.publicUrl;
+  }
+
+  // Uložení do tabulky "posts"
+  const { error: insertError } = await supabase
+    .from("posts")
+    .insert([{ title, content, image_url }]);
+
+  if (insertError) {
+    alert("Chyba při ukládání příspěvku.");
+    return;
+  }
+
+  // Vyčištění formuláře
+  document.getElementById("title").value = "";
+  document.getElementById("content").value = "";
+  document.getElementById("image").value = "";
+
+  loadPosts(); // znovu načíst příspěvky
+}
+
+
+  window.deletePost = deletePost;
+  window.editPost = editPost;
+  window.saveEdit = saveEdit;
+  window.addPost = addPost;
+
+
+  loadPosts();
+</script>
+
+</body>
+</html>
